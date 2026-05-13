@@ -13,12 +13,14 @@ The platform has NO business logic — that lives in plugins.
 
 import os
 import asyncio
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
-from platform.discovery import discover_plugins
-from platform.registry import PluginRegistry, CannotEnable
-from platform.router import VendorRouter
-from platform.test_gate import gate_check
+from fastapi.responses import HTMLResponse
+from plugin_hub_app.discovery import discover_plugins
+from plugin_hub_app.registry import PluginRegistry, CannotEnable
+from plugin_hub_app.router import VendorRouter
+from plugin_hub_app.test_gate import gate_check
 
 
 # ── Globals ──────────────────────────────────────────────────────
@@ -176,6 +178,15 @@ async def platform_health():
         "plugins_total": len(plugins),
         "plugins_enabled": enabled,
     }
+
+
+# ── Dashboard ─────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    """Serve the plugin management dashboard."""
+    dashboard_path = Path(__file__).parent / "dashboard.html"
+    return dashboard_path.read_text()
 
 
 # ── Direct entry point ───────────────────────────────────────────

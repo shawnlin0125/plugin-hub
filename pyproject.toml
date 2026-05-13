@@ -20,4 +20,4 @@ dependencies = [
 dev = ["pytest>=8", "pytest-asyncio>=0.25"]
 
 [tool.setuptools.packages.find]
-include = ["platform*", "platform_plugin_sdk*"]
+include = ["plugin_hub_app*", "platform_plugin_sdk*"]

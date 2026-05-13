@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plugin Hub — Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 20px; color: #f0f6fc; }
+  .header .status { font-size: 13px; color: #8b949e; }
+  .header .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.green { background: #3fb950; }
+  .dot.red { background: #f85149; }
+
+  .container { max-width: 900px; margin: 24px auto; padding: 0 24px; }
+  
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; transition: border-color 0.2s; }
+  .card:hover { border-color: #58a6ff; }
+  
+  .card-left { display: flex; align-items: center; gap: 16px; }
+  .card-icon { font-size: 32px; }
+  .card-info h3 { font-size: 16px; color: #f0f6fc; margin-bottom: 4px; }
+  .card-info .meta { font-size: 12px; color: #8b949e; }
+  .card-info .meta span { margin-right: 12px; }
+  
+  .card-right { display: flex; gap: 8px; align-items: center; }
+  
+  .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  
+  .btn-test { background: #21262d; color: #c9d1d9; border-color: #30363d; }
+  .btn-test:hover:not(:disabled) { background: #30363d; }
+  .btn-test.loading { opacity: 0.6; }
+  
+  .btn-enable { background: #238636; color: #fff; border-color: #2ea043; }
+  .btn-enable:hover:not(:disabled) { background: #2ea043; }
+  
+  .btn-disable { background: #da3633; color: #fff; border-color: #f85149; }
+  .btn-disable:hover:not(:disabled) { background: #f85149; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.enabled { background: #033a16; color: #3fb950; }
+  .badge.disabled { background: #21262d; color: #8b949e; }
+  .badge.error { background: #3a0316; color: #f85149; }
+  .badge.loaded { background: #1b2d3a; color: #58a6ff; }
+
+  .test-results { margin-top: 12px; padding: 12px; background: #0d1117; border-radius: 6px; font-size: 12px; max-height: 200px; overflow-y: auto; display: none; }
+  .test-results.show { display: block; }
+  .test-results .result { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .test-results .result .icon { font-size: 14px; width: 16px; }
+  .test-results .summary { color: #f0f6fc; font-weight: 600; margin-bottom: 6px; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 100; animation: slideIn 0.3s ease; }
+  .toast.success { background: #238636; color: #fff; }
+  .toast.error { background: #da3633; color: #fff; }
+  @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔌 Plugin Hub</h1>
+  <div class="status"><span class="dot green" id="platformDot"></span> <span id="platformStatus">Connecting...</span></div>
+</div>
+
+<div class="container" id="pluginList"></div>
+
+<script>
+const API = '';
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function badge(state) {
+  const map = { enabled: 'enabled', disabled: 'disabled', loaded: 'loaded', error: 'error' };
+  return `<span class="badge ${map[state] || 'disabled'}">${state}</span>`;
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/plugins');
+    const plugins = await r.json();
+    const h = await fetch('/health');
+    const health = await h.json();
+
+    document.getElementById('platformStatus').textContent = 
+      `${health.plugins_enabled}/${health.plugins_total} enabled`;
+    document.getElementById('platformDot').className = 
+      `dot ${health.status === 'healthy' ? 'green' : 'red'}`;
+
+    document.getElementById('pluginList').innerHTML = plugins.map(p => `
+      <div class="card" id="card-${p.plugin_id}">
+        <div class="card-left">
+          <div class="card-icon">🎫</div>
+          <div class="card-info">
+            <h3>${p.plugin_name}</h3>
+            <div class="meta">
+              <span>🆔 ${p.plugin_id}</span>
+              <span>📦 v${p.version}</span>
+              <span>🚗 ${p.route_target}</span>
+              ${badge(p.state)}
+              ${p.test_passed ? '✅' : '⏳'} test
+            </div>
+          </div>
+        </div>
+        <div class="card-right">
+          <button class="btn btn-test" onclick="runTest('${p.plugin_id}')" ${p.state === 'enabled' ? 'disabled' : ''}>
+            🧪 Test
+          </button>
+          ${p.state === 'enabled' ? 
+            `<button class="btn btn-disable" onclick="toggle('${p.plugin_id}', 'disable')">⏹ Disable</button>` :
+            `<button class="btn btn-enable" onclick="toggle('${p.plugin_id}', 'enable')" ${!p.test_passed ? 'disabled title="Must pass tests first"' : ''}>▶ Enable</button>`
+          }
+        </div>
+      </div>
+      <div class="test-results" id="results-${p.plugin_id}"></div>
+    `).join('');
+
+  } catch(e) {
+    document.getElementById('platformStatus').textContent = 'Disconnected';
+    document.getElementById('platformDot').className = 'dot red';
+  }
+}
+
+async function runTest(id) {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '⏳ Testing...';
+  btn.classList.add('loading');
+
+  const resultsDiv = document.getElementById(`results-${id}`);
+  resultsDiv.classList.add('show');
+  resultsDiv.innerHTML = '<div class="summary">Running tests...</div>';
+
+  try {
+    const r = await fetch(`/api/plugins/${id}/test`, { method: 'POST' });
+    const data = await r.json();
+
+    resultsDiv.innerHTML = `
+      <div class="summary">${data.passed ? '✅' : '❌'} ${data.summary}</div>
+      ${data.results.map(r => `
+        <div class="result">
+          <span class="icon">${r.passed ? '✅' : '❌'}</span>
+          <span>${r.name}</span>
+          <span style="color:#8b949e;font-size:11px">${r.duration_ms.toFixed(1)}ms</span>
+        </div>
+      `).join('')}
+    `;
+    toast(data.passed ? 'All tests passed!' : `${data.summary}`, data.passed ? 'success' : 'error');
+  } catch(e) {
+    resultsDiv.innerHTML = '<div class="summary" style="color:#f85149">Test failed to run</div>';
+    toast('Test error', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧪 Test';
+    btn.classList.remove('loading');
+    load();
+  }
+}
+
+async function toggle(id, action) {
+  try {
+    const r = await fetch(`/api/plugins/${id}/${action}`, { method: 'POST' });
+    if (r.ok) {
+      toast(`${id} ${action}d`, 'success');
+    } else {
+      const e = await r.json();
+      toast(e.detail || 'Error', 'error');
+    }
+  } catch(e) {
+    toast('Network error', 'error');
+  }
+  load();
+}
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

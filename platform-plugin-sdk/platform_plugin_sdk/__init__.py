@@ -10,7 +10,7 @@ Usage:
         ...
 """
 
-from .abc import Plugin, HealthStatus, TestReport, Fixture
+from .abc import Plugin, HealthStatus, TestReport, TestResult, Fixture
 
-__all__ = ["Plugin", "HealthStatus", "TestReport", "Fixture"]
+__all__ = ["Plugin", "HealthStatus", "TestReport", "TestResult", "Fixture"]
 __version__ = "0.1.0"
