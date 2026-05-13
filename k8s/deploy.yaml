@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: plugin-hub
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: plugin-hub-config
+  namespace: plugin-hub
+data:
+  plugins.yaml: |
+    plugins:
+      - id: ticketmaster
+        name: "TicketMaster"
+        version: "0.1.0"
+        description: "TicketMaster API integration"
+        repo: "https://github.com/shawnlin0125/ticket-vendor"
+        test_command: "cd plugins/ticketmaster && python -m pytest -v --json-report"
+        enabled: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plugin-hub
+  namespace: plugin-hub
+  labels:
+    app: plugin-hub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plugin-hub
+  template:
+    metadata:
+      labels:
+        app: plugin-hub
+    spec:
+      containers:
+      - name: plugin-hub
+        image: plugin-hub:go-latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: TZ
+          value: "Asia/Taipei"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+          periodSeconds: 10
+        volumeMounts:
+        - name: config
+          mountPath: /etc/plugin-hub
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: plugin-hub-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plugin-hub
+  namespace: plugin-hub
+spec:
+  type: NodePort
+  selector:
+    app: plugin-hub
+  ports:
+  - port: 80
+    targetPort: 8000
+    nodePort: 30081
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: plugin-hub
+  namespace: plugin-hub
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: hub.shawnlin.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: plugin-hub
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - hub.shawnlin.online
+    secretName: hub-shawnlin-online-tls

@@ -1,23 +1,32 @@
-# Dockerfile — plugin-hub with ticket-vendor
-FROM python:3.12-slim
+# ── Build Stage ──
+FROM golang:1.24-alpine AS builder
 
-WORKDIR /app
+RUN apk add --no-cache git ca-certificates
 
-# Install system deps
-RUN pip install --no-cache-dir fastapi uvicorn pyyaml aiohttp apscheduler pytest pytest-asyncio
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Install platform SDK
-COPY platform-plugin-sdk/ /app/sdk/
-RUN pip install /app/sdk/
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /plugin-hub .
 
-# Copy ticket-vendor source and install
-COPY ../ticket-vendor/ /tmp/ticket-vendor/
-RUN pip install /tmp/ticket-vendor/
+# ── Runtime Stage ──
+# Minimal Alpine with Python for isolated test execution
+FROM alpine:3.21
 
-# Copy platform core
-COPY platform/ /app/platform/
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    python3 \
+    py3-pip \
+    && pip3 install --no-cache-dir pytest pytest-json-report --break-system-packages
 
-ENV LOAD_PLUGINS="ticketmaster"
+COPY --from=builder /plugin-hub /usr/local/bin/plugin-hub
+COPY config/plugins.yaml /etc/plugin-hub/plugins.yaml
+
 EXPOSE 8000
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8000/health || exit 1
 
-CMD ["python", "-m", "platform.main"]
+ENTRYPOINT ["/usr/local/bin/plugin-hub"]
+CMD ["-config", "/etc/plugin-hub/plugins.yaml"]

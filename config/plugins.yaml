@@ -1,0 +1,30 @@
+# Plugin Hub — Plugin Registry
+# Each entry defines a vendor plugin managed by the hub.
+# Plugins are independent Python packages in the ticket-vendor repo.
+# Tests run in isolated CI environments.
+
+plugins:
+  - id: ticketmaster
+    name: "TicketMaster"
+    version: "0.1.0"
+    description: "TicketMaster API integration — search events, fetch availability, reserve tickets"
+    repo: "https://github.com/shawnlin0125/ticket-vendor"
+    test_command: "cd plugins/ticketmaster && python -m pytest -v --json-report"
+    enabled: false
+
+  # Future vendors (stubs):
+  # - id: kktix
+  #   name: "KKTIX"
+  #   version: "0.1.0"
+  #   description: "KKTIX ticketing API integration"
+  #   repo: "https://github.com/shawnlin0125/ticket-vendor"
+  #   test_command: "cd plugins/kktix && python -m pytest -v --json-report"
+  #   enabled: false
+  #
+  # - id: ibon
+  #   name: "ibon 售票"
+  #   version: "0.1.0"
+  #   description: "ibon ticketing system integration (7-ELEVEN Taiwan)"
+  #   repo: "https://github.com/shawnlin0125/ticket-vendor"
+  #   test_command: "cd plugins/ibon && python -m pytest -v --json-report"
+  #   enabled: false
