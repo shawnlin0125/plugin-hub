@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vendor-bundle
+  labels:
+    app: plugin-hub
+    component: vendor
+    tier: light
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plugin-hub
+      component: vendor
+      tier: light
+  template:
+    metadata:
+      labels:
+        app: plugin-hub
+        component: vendor
+        tier: light
+    spec:
+      containers:
+      - name: vendor
+        image: ghcr.io/shawnlin0125/plugin-hub-bundle:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: LOAD_PLUGINS
+          value: "ibon,fami,tixcraft"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: routing-config
+          mountPath: /etc/plugin-hub
+          readOnly: true
+      volumes:
+      - name: routing-config
+        configMap:
+          name: vendor-routing

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "platform-plugin-sdk"
+version = "0.1.0"
+description = "Universal plugin interface for plugin-hub — define once, run anywhere"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [{name = "Shawn Lin"}]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.25"]
