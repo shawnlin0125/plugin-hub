@@ -17,10 +17,9 @@ import (
 
 func main() {
 	port := flag.Int("port", 8000, "HTTP listen port")
-	manifestURL := flag.String("manifest-url", "", "URL to plugin-manifest.json (e.g. GitHub raw)")
+	manifestURL := flag.String("manifest-url", "", "URL to plugin-manifest.json")
 	flag.Parse()
 
-	// Default manifest URL from env or fallback
 	if *manifestURL == "" {
 		*manifestURL = os.Getenv("MANIFEST_URL")
 	}
@@ -47,7 +46,7 @@ func main() {
 		}
 	}
 
-	// Periodic refresh (sync with manifest every 5 minutes)
+	// Periodic manifest refresh
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
@@ -67,19 +66,25 @@ func main() {
 	h := handler.New(reg)
 	mux := http.NewServeMux()
 
-	// Dashboard
+	// ── Admin API ──
 	mux.HandleFunc("GET /", h.Dashboard)
-
-	// Health
 	mux.HandleFunc("GET /health", h.Health)
-
-	// Plugin CRUD (no test endpoint — tests run in CI)
 	mux.HandleFunc("GET /api/plugins", h.ListPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}", h.GetPlugin)
 	mux.HandleFunc("POST /api/plugins/{id}/enable", h.EnablePlugin)
 	mux.HandleFunc("POST /api/plugins/{id}/disable", h.DisablePlugin)
 
-	// CORS middleware for SPA
+	// ── Assignment API ──
+	mux.HandleFunc("GET /api/assignments", h.GetAssignments)
+	mux.HandleFunc("POST /api/assignments/{vendor}", h.SetAssignment)
+
+	// ── Business Proxy (reverse proxy to ticket-proxy pods) ──
+	mux.HandleFunc("GET /api/v1/{vendor}/search", h.ProxyToVendor)
+	mux.HandleFunc("POST /api/v1/{vendor}/orders", h.ProxyToVendor)
+	mux.HandleFunc("GET /api/v1/{vendor}/orders/{id}", h.ProxyToVendor)
+	mux.HandleFunc("GET /api/v1/{vendor}/orders/{id}/poll", h.ProxyToVendor)
+	mux.HandleFunc("GET /api/v1/{vendor}/inventory", h.ProxyToVendor)
+
 	corsHandler := corsMiddleware(mux)
 
 	// Graceful shutdown
@@ -93,9 +98,10 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", *port)
 	log.Printf("🚀 Plugin Hub listening on http://0.0.0.0%s", addr)
-	log.Printf("   Dashboard: http://localhost%s", addr)
-	log.Printf("   API:       http://localhost%s/api/plugins", addr)
-	log.Printf("   Manifest:  %s", *manifestURL)
+	log.Printf("   Dashboard:  http://localhost%s", addr)
+	log.Printf("   Admin API:  http://localhost%s/api/plugins", addr)
+	log.Printf("   Proxy API:  http://localhost%s/api/v1/{vendor}/*", addr)
+	log.Printf("   Manifest:   %s", *manifestURL)
 
 	if err := http.ListenAndServe(addr, corsHandler); err != nil {
 		log.Fatalf("Server error: %v", err)

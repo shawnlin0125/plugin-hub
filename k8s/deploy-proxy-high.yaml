@@ -1,0 +1,75 @@
+# ── Ticket Proxy: High Traffic ──
+# Serves vendor plugins assigned to "proxy-high".
+# Multiple replicas, high resource allocation.
+# Reads LOAD_PLUGINS from its own ConfigMap (managed by ArgoCD).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-proxy-high
+  namespace: plugin-hub
+  labels:
+    app: ticket-proxy-high
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ticket-proxy-high
+  template:
+    metadata:
+      labels:
+        app: ticket-proxy-high
+    spec:
+      containers:
+      - name: ticket-proxy
+        image: ticket-proxy:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: TZ
+          value: "Asia/Taipei"
+        - name: LOAD_PLUGINS
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-high-plugins
+              key: LOAD_PLUGINS
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-high-plugins
+  namespace: plugin-hub
+data:
+  LOAD_PLUGINS: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticket-proxy-high
+  namespace: plugin-hub
+spec:
+  selector:
+    app: ticket-proxy-high
+  ports:
+  - port: 8000
+    targetPort: 8000

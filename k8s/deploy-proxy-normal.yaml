@@ -1,0 +1,74 @@
+# ── Ticket Proxy: Normal Traffic ──
+# Serves vendor plugins assigned to "proxy-normal".
+# Single replica, lower resource allocation.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticket-proxy-normal
+  namespace: plugin-hub
+  labels:
+    app: ticket-proxy-normal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ticket-proxy-normal
+  template:
+    metadata:
+      labels:
+        app: ticket-proxy-normal
+    spec:
+      containers:
+      - name: ticket-proxy
+        image: ticket-proxy:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: TZ
+          value: "Asia/Taipei"
+        - name: LOAD_PLUGINS
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-normal-plugins
+              key: LOAD_PLUGINS
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-normal-plugins
+  namespace: plugin-hub
+data:
+  LOAD_PLUGINS: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ticket-proxy-normal
+  namespace: plugin-hub
+spec:
+  selector:
+    app: ticket-proxy-normal
+  ports:
+  - port: 8000
+    targetPort: 8000
