@@ -11,30 +11,28 @@
   .header h1{font-size:20px;color:#f0f6fc}.header .status{font-size:13px;color:#8b949e}
   .header .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
   .dot.green{background:#3fb950}.dot.red{background:#f85149}
-  .container{max-width:1000px;margin:24px auto;padding:0 24px}
+  .container{max-width:800px;margin:24px auto;padding:0 24px}
   .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s;gap:12px}
   .card:hover{border-color:#58a6ff}
   .card-left{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
   .card-icon{font-size:28px;flex-shrink:0}
   .card-info{min-width:0}.card-info h3{font-size:15px;color:#f0f6fc;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-info .meta{font-size:11px;color:#8b949e;display:flex;flex-wrap:wrap;gap:6px}
-  .card-mid{display:flex;align-items:center;gap:8px;flex-shrink:0}
-  .card-mid select{padding:6px 10px;border-radius:6px;background:#21262d;color:#c9d1d9;border:1px solid #30363d;font-size:12px;cursor:pointer}
-  .card-mid select:focus{outline:none;border-color:#58a6ff}
   .card-right{display:flex;gap:6px;align-items:center;flex-shrink:0}
   .btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s;white-space:nowrap}
   .btn:disabled{opacity:.4;cursor:not-allowed}
   .btn-enable{background:#238636;color:#fff;border-color:#2ea043}.btn-enable:hover:not(:disabled){background:#2ea043}
   .btn-disable{background:#da3633;color:#fff;border-color:#f85149}.btn-disable:hover:not(:disabled){background:#f85149}
   .badge{display:inline-block;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:600}
-  .badge.enabled{background:#033a16;color:#3fb950}.badge.disabled{background:#21262d;color:#8b949e}
-  .badge.loaded{background:#1b2d3a;color:#58a6ff}
+  .badge.enabled{background:#033a16;color:#3fb950}.badge.disabled{background:#21262d;color:#8b949e}.badge.loaded{background:#1b2d3a;color:#58a6ff}
   .test-status{font-size:10px;white-space:nowrap}.test-status.passed{color:#3fb950}.test-status.pending{color:#d29922}
   .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:14px;z-index:100;animation:slideIn .3s ease}
   .toast.success{background:#238636;color:#fff}.toast.error{background:#da3633;color:#fff}
   @keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
   .new-badge{background:#1f6feb;color:#fff;padding:1px 5px;border-radius:8px;font-size:9px;margin-left:4px}
   .gh-link{font-size:10px;color:#58a6ff;text-decoration:none;margin-left:4px}.gh-link:hover{text-decoration:underline}
+  .info-bar{font-size:12px;color:#8b949e;padding:8px 0;margin-bottom:16px;border-bottom:1px solid #21262d}
+  .info-bar code{background:#21262d;padding:1px 5px;border-radius:4px;color:#c9d1d9;font-size:11px}
 </style>
 </head>
 <body>
@@ -42,7 +40,10 @@
   <h1>🔌 Plugin Hub</h1>
   <div class="status"><span class="dot green" id="platformDot"></span> <span id="platformStatus">Connecting...</span></div>
 </div>
-<div class="container" id="pluginList"></div>
+<div class="container">
+  <div class="info-bar" id="infoBar"></div>
+  <div id="pluginList"></div>
+</div>
 
 <script>
 const API='';
@@ -55,30 +56,28 @@ function testBadge(passed){return passed?'<span class="test-status passed">✅ C
 
 async function load(){
   try{
-    const[pluginsR,assignR,healthR]=await Promise.all([
+    const[pluginsR,healthR]=await Promise.all([
       fetch('/api/plugins'),
-      fetch('/api/assignments'),
       fetch('/health')
     ]);
     const plugins=await pluginsR.json();
-    const assignments=await assignR.json();
     const health=await healthR.json();
-
-    const deployments=health.deployments||['proxy-high','proxy-normal'];
-    const opts=deployments.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
 
     document.getElementById('platformStatus').textContent=health.plugins_enabled+'/'+health.plugins_total+' enabled';
     document.getElementById('platformDot').className='dot '+(health.status==='healthy'?'green':'red');
 
+    const enabledList=plugins.filter(p=>p.state==='enabled').map(p=>p.plugin_id).join(', ')||'(none)';
+    document.getElementById('infoBar').innerHTML='LOAD_PLUGINS = <code>'+enabledList+'</code> — 所有 proxy pod 自動載入';
+
     document.getElementById('pluginList').innerHTML=plugins.map(p=>{
-      const deploy=p.deployment||'';
-      const isNew=!deploy;
+      const canEnable=p.test_passed;
+      const isEnabled=p.state==='enabled';
       return `
       <div class="card" id="card-${p.plugin_id}">
         <div class="card-left">
           <div class="card-icon">🎫</div>
           <div class="card-info">
-            <h3>${p.plugin_name}${isNew?'<span class="new-badge">NEW</span>':''} <a class="gh-link" href="${p.repo}" target="_blank">↗</a></h3>
+            <h3>${p.plugin_name} <a class="gh-link" href="${p.repo}" target="_blank">↗</a></h3>
             <div class="meta">
               <span>${p.plugin_id}</span>
               <span>v${p.version}</span>
@@ -87,17 +86,11 @@ async function load(){
             </div>
           </div>
         </div>
-        <div class="card-mid">
-          <select onchange="setDeploy('${p.plugin_id}',this.value)" ${p.state==='enabled'?'disabled title="Disable first to reassign"':''}>
-            <option value="">-- assign --</option>
-            ${opts.replace('<option value="'+deploy+'">','<option value="'+deploy+'" selected>')}
-          </select>
-        </div>
         <div class="card-right">
-          ${p.state==='enabled'?
+          ${isEnabled?
             '<button class="btn btn-disable" onclick="toggle(\''+p.plugin_id+'\',\'disable\')">⏹ Disable</button>':
             '<button class="btn btn-enable" onclick="toggle(\''+p.plugin_id+'\',\'enable\')" '+
-            (!deploy||!p.test_passed?'disabled title="'+(p.test_passed?'Assign deployment first':'Must pass CI tests first')+'"':'')+'>▶ Enable</button>'}
+            (!canEnable?'disabled title="Must pass CI tests first"':'')+'>▶ Enable</button>'}
         </div>
       </div>`;
     }).join('');
@@ -106,19 +99,6 @@ async function load(){
     document.getElementById('platformStatus').textContent='Disconnected';
     document.getElementById('platformDot').className='dot red';
   }
-}
-
-async function setDeploy(vendor,deployment){
-  if(!deployment)return;
-  try{
-    const r=await fetch('/api/assignments/'+vendor,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({deployment:deployment})
-    });
-    if(r.ok){toast(vendor+' → '+deployment,'success');load()}
-    else{const e=await r.json();toast(e.error||'Error','error')}
-  }catch(e){toast('Network error','error')}
 }
 
 async function toggle(id,action){

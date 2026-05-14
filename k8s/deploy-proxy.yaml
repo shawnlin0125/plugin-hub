@@ -1,23 +1,23 @@
-# ── Ticket Proxy: High Traffic ──
-# Serves vendor plugins assigned to "proxy-high".
-# Multiple replicas, high resource allocation.
-# Reads LOAD_PLUGINS from its own ConfigMap (managed by ArgoCD).
+# ── Ticket Proxy (Unified) ──
+# All proxy pods load ALL enabled vendors from the shared ConfigMap.
+# Hub Admin enables/disables vendors → ConfigMap updated → pods reload.
+# Scale replicas for capacity; no per-vendor pool separation.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ticket-proxy-high
+  name: ticket-proxy
   namespace: plugin-hub
   labels:
-    app: ticket-proxy-high
+    app: ticket-proxy
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: ticket-proxy-high
+      app: ticket-proxy
   template:
     metadata:
       labels:
-        app: ticket-proxy-high
+        app: ticket-proxy
     spec:
       containers:
       - name: ticket-proxy
@@ -32,15 +32,15 @@ spec:
         - name: LOAD_PLUGINS
           valueFrom:
             configMapKeyRef:
-              name: proxy-high-plugins
+              name: proxy-plugins
               key: LOAD_PLUGINS
         resources:
           requests:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 200m
+            memory: 128Mi
           limits:
-            cpu: 2000m
-            memory: 1Gi
+            cpu: 1000m
+            memory: 512Mi
         livenessProbe:
           httpGet:
             path: /health
@@ -54,22 +54,27 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
 ---
+# ConfigMap: holds the LOAD_PLUGINS env value (comma-separated vendor IDs).
+# Managed by Hub Admin via K8s API when vendors are enabled/disabled.
+# ALL proxy pods read this — every pod loads every enabled vendor.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: proxy-high-plugins
+  name: proxy-plugins
   namespace: plugin-hub
 data:
   LOAD_PLUGINS: ""
 ---
+# Service: single entrypoint for all vendor traffic.
+# Hub reverse-proxies /api/v1/{vendor}/* → ticket-proxy:8000
 apiVersion: v1
 kind: Service
 metadata:
-  name: ticket-proxy-high
+  name: ticket-proxy
   namespace: plugin-hub
 spec:
   selector:
-    app: ticket-proxy-high
+    app: ticket-proxy
   ports:
   - port: 8000
     targetPort: 8000

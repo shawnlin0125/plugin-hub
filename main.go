@@ -74,11 +74,10 @@ func main() {
 	mux.HandleFunc("POST /api/plugins/{id}/enable", h.EnablePlugin)
 	mux.HandleFunc("POST /api/plugins/{id}/disable", h.DisablePlugin)
 
-	// ── Assignment API ──
-	mux.HandleFunc("GET /api/assignments", h.GetAssignments)
-	mux.HandleFunc("POST /api/assignments/{vendor}", h.SetAssignment)
+	// ── Load Plugins (for proxy ConfigMap sync) ──
+	mux.HandleFunc("GET /api/load-plugins", h.GetLoadPlugins)
 
-	// ── Business Proxy (reverse proxy to ticket-proxy pods) ──
+	// ── Business Proxy (all enabled vendors → single ticket-proxy service) ──
 	mux.HandleFunc("GET /api/v1/{vendor}/search", h.ProxyToVendor)
 	mux.HandleFunc("POST /api/v1/{vendor}/orders", h.ProxyToVendor)
 	mux.HandleFunc("GET /api/v1/{vendor}/orders/{id}", h.ProxyToVendor)
@@ -100,7 +99,7 @@ func main() {
 	log.Printf("🚀 Plugin Hub listening on http://0.0.0.0%s", addr)
 	log.Printf("   Dashboard:  http://localhost%s", addr)
 	log.Printf("   Admin API:  http://localhost%s/api/plugins", addr)
-	log.Printf("   Proxy API:  http://localhost%s/api/v1/{vendor}/*", addr)
+	log.Printf("   Proxy:      http://localhost%s/api/v1/{vendor}/*", addr)
 	log.Printf("   Manifest:   %s", *manifestURL)
 
 	if err := http.ListenAndServe(addr, corsHandler); err != nil {

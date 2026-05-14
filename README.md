@@ -10,27 +10,43 @@ Universal plugin management platform — API Gateway + Admin Dashboard.
 │                                                              │
 │  ┌──────────────────┐    ┌──────────────────────────────┐   │
 │  │  Hub Admin (Go)   │    │  Ticket Proxy (Python)        │   │
-│  │                    │    │                               │   │
-│  │  Dashboard         │    │  /api/v1/{vendor}/search      │   │
-│  │  Plugin Registry   │◀──▶│  /api/v1/{vendor}/orders     │   │
-│  │  Vendor Assignment │    │  /api/v1/{vendor}/inventory   │   │
-│  │  Reverse Proxy ────┼────▶  (proxy-high / proxy-normal) │   │
-│  └──────────────────┘    └──────────────────────────────┘   │
-│           │                                                   │
-│           │ reads manifest from                               │
-│           ▼                                                   │
-│  ┌──────────────────────────────────────┐                   │
+│  │                    │    │  × N replicas (all identical) │   │
+│  │  Dashboard         │    │                               │   │
+│  │  Plugin Registry   │◀──▶│  ALL enabled vendors loaded   │   │
+│  │  Enable/Disable    │    │  /api/v1/{vendor}/search      │   │
+│  │  Reverse Proxy ────┼────▶  /api/v1/{vendor}/orders     │   │
+│  └──────────────────┘    │  /api/v1/{vendor}/inventory   │   │
+│           │              └──────────────────────────────┘   │
+│           │ reads manifest from        ▲                     │
+│           ▼                            │ LOAD_PLUGINS        │
+│  ┌──────────────────────────────────────┐ via ConfigMap     │
 │  │  ticket-vendor/plugin-manifest.json   │                   │
 │  │  (GitHub raw, CI auto-updates)        │                   │
 │  └──────────────────────────────────────┘                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Key Design Principle
+
+**No capacity pools. No per-vendor deployment. One unified proxy fleet.**
+
+- A single `ticket-proxy` Deployment serves ALL enabled vendors
+- When admin enables a vendor in the dashboard → every proxy pod loads it
+- Scale replicas horizontally for capacity — all pods are identical
+- Hub reverse-proxies `/api/v1/{vendor}/*` → `ticket-proxy` service → any pod handles any vendor
+
+```
+Multi-server scenario:
+  Server A: ticket-proxy (replica 1) ─┐
+  Server B: ticket-proxy (replica 2) ─┼─ same ConfigMap, same LOAD_PLUGINS
+  Server C: ticket-proxy (replica 3) ─┘
+```
+
 ## Components
 
 | Component | Repo | Language | Image |
 |-----------|------|:--------:|-------|
-| Hub Admin | plugin-hub | Go | 28MB |
+| Hub Admin | plugin-hub | Go | ~8MB |
 | Ticket Proxy | ticket-vendor | Python (FastAPI) | ~120MB |
 | Vendor Plugins | ticket-vendor | Python | bundled in proxy |
 
@@ -40,7 +56,10 @@ Universal plugin management platform — API Gateway + Admin Dashboard.
 # Build Hub Admin
 docker build -t plugin-hub:go-latest .
 
-# Deploy to k3s
+# Import to k3s containerd
+docker save plugin-hub:go-latest | sudo k3s ctr images import -
+
+# Deploy
 kubectl apply -f k8s/
 ```
 
@@ -55,8 +74,7 @@ kubectl apply -f k8s/
 | GET | `/api/plugins/{id}` | Plugin details |
 | POST | `/api/plugins/{id}/enable` | Enable plugin (CI must pass) |
 | POST | `/api/plugins/{id}/disable` | Disable plugin |
-| GET | `/api/assignments` | List vendor → deployment mappings |
-| POST | `/api/assignments/{vendor}` | Assign vendor to deployment |
+| GET | `/api/load-plugins` | Get `LOAD_PLUGINS` value (for ConfigMap sync) |
 
 ### Business API (proxied to Ticket Proxy)
 
@@ -73,9 +91,9 @@ kubectl apply -f k8s/
 1. Add plugin in [ticket-vendor](https://github.com/shawnlin0125/ticket-vendor) repo
 2. CI passes → `plugin-manifest.json` auto-updates
 3. Hub auto-discovers new vendor (≤ 5 min)
-4. Dashboard: assign to proxy-high or proxy-normal
-5. Update the proxy ConfigMap (via ArgoCD or manual)
-6. Click Enable → vendor goes live
+4. Dashboard: click **Enable**
+5. Update `proxy-plugins` ConfigMap `LOAD_PLUGINS` with the new vendor (from `/api/load-plugins`)
+6. Restart proxy pods → vendor goes live on ALL proxy instances
 
 **Hub code never changes when adding vendors.**
 
@@ -84,8 +102,13 @@ kubectl apply -f k8s/
 | Deployment | Replicas | Purpose |
 |------------|:--------:|---------|
 | hub-admin | 1 | Dashboard + API + reverse proxy |
-| ticket-proxy-high | 2 | High-traffic vendor plugins |
-| ticket-proxy-normal | 1 | Normal-traffic vendor plugins |
+| ticket-proxy | 2+ | All vendor plugins (scale for capacity) |
+
+## ConfigMap
+
+| ConfigMap | Key | Managed by | Used by |
+|-----------|-----|:----------:|---------|
+| proxy-plugins | LOAD_PLUGINS | Hub Admin (via `/api/load-plugins`) | ticket-proxy pods |
 
 ## Auto-Discovery
 

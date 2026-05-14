@@ -162,6 +162,20 @@ func (r *Registry) EnabledCount() int {
 	return n
 }
 
+// EnabledVendors returns the IDs of all enabled plugins.
+func (r *Registry) EnabledVendors() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var vendors []string
+	for id, p := range r.plugins {
+		if p.State == StateEnabled {
+			vendors = append(vendors, id)
+		}
+	}
+	return vendors
+}
+
 // Stats returns a JSON-serializable health summary.
 func (r *Registry) Stats() map[string]any {
 	r.mu.RLock()

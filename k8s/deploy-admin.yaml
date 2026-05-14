@@ -2,21 +2,12 @@
 # Dashboard + management API. Lightweight, single replica.
 # Serves:
 #   - Dashboard (hub.shawnlin.online/)
-#   - Admin API (/api/plugins, /api/assignments)
+#   - Admin API (/api/plugins, /api/load-plugins)
 #   - Reverse proxy to ticket-proxy (/api/v1/{vendor}/*)
 apiVersion: v1
 kind: Namespace
 metadata:
   name: plugin-hub
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: hub-assignments
-  namespace: plugin-hub
-data:
-  assignments.yaml: |
-    assignments: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -47,12 +38,8 @@ spec:
           value: "Asia/Taipei"
         - name: MANIFEST_URL
           value: "https://raw.githubusercontent.com/shawnlin0125/ticket-vendor/main/plugin-manifest.json"
-        - name: ASSIGNMENTS_FILE
-          value: "/etc/plugin-hub/assignments.yaml"
-        - name: PROXY_SVC_PROXY_HIGH
-          value: "ticket-proxy-high.plugin-hub.svc.cluster.local:8000"
-        - name: PROXY_SVC_PROXY_NORMAL
-          value: "ticket-proxy-normal.plugin-hub.svc.cluster.local:8000"
+        - name: PROXY_SVC
+          value: "ticket-proxy.plugin-hub.svc.cluster.local:8000"
         resources:
           requests:
             cpu: 10m
@@ -72,14 +59,6 @@ spec:
             port: 8000
           initialDelaySeconds: 3
           periodSeconds: 10
-        volumeMounts:
-        - name: assignments
-          mountPath: /etc/plugin-hub
-          readOnly: false
-      volumes:
-      - name: assignments
-        configMap:
-          name: hub-assignments
 ---
 apiVersion: v1
 kind: Service
