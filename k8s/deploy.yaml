@@ -3,22 +3,6 @@ kind: Namespace
 metadata:
   name: plugin-hub
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: plugin-hub-config
-  namespace: plugin-hub
-data:
-  plugins.yaml: |
-    plugins:
-      - id: ticketmaster
-        name: "TicketMaster"
-        version: "0.1.0"
-        description: "TicketMaster API integration"
-        repo: "https://github.com/shawnlin0125/ticket-vendor"
-        test_command: "cd plugins/ticketmaster && python -m pytest -v --json-report"
-        enabled: false
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -46,6 +30,8 @@ spec:
         env:
         - name: TZ
           value: "Asia/Taipei"
+        - name: MANIFEST_URL
+          value: "https://raw.githubusercontent.com/shawnlin0125/ticket-vendor/main/plugin-manifest.json"
         resources:
           requests:
             cpu: 10m
@@ -65,14 +51,6 @@ spec:
             port: 8000
           initialDelaySeconds: 3
           periodSeconds: 10
-        volumeMounts:
-        - name: config
-          mountPath: /etc/plugin-hub
-          readOnly: true
-      volumes:
-      - name: config
-        configMap:
-          name: plugin-hub-config
 ---
 apiVersion: v1
 kind: Service

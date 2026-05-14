@@ -49,13 +49,21 @@ func New() *Registry {
 	return &Registry{plugins: make(map[string]*Plugin)}
 }
 
-// Load registers a plugin from config. Idempotent.
-func (r *Registry) Load(id, name, version, desc, repo, route string) {
+// LoadFromManifest registers a plugin from a manifest entry.
+// TestPassed is set from CI results, not runtime testing.
+func (r *Registry) LoadFromManifest(id, name, version, desc, repo string, testPassed bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, exists := r.plugins[id]; exists {
+		// Update existing plugin's test status from manifest
+		r.plugins[id].TestPassed = testPassed
 		return
+	}
+
+	state := StateLoaded
+	if testPassed {
+		state = StateLoaded
 	}
 
 	r.plugins[id] = &Plugin{
@@ -64,8 +72,9 @@ func (r *Registry) Load(id, name, version, desc, repo, route string) {
 		Version:     version,
 		Description: desc,
 		Repo:        repo,
-		State:       StateLoaded,
-		RouteTarget: route,
+		State:       state,
+		TestPassed:  testPassed,
+		RouteTarget: "default",
 	}
 }
 

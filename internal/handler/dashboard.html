@@ -10,7 +10,7 @@
   .header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
   .header h1{font-size:20px;color:#f0f6fc}.header .status{font-size:13px;color:#8b949e}
   .header .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-  .dot.green{background:#3fb950}.dot.red{background:#f85149}.dot.yellow{background:#d29922}
+  .dot.green{background:#3fb950}.dot.red{background:#f85149}
   .container{max-width:900px;margin:24px auto;padding:0 24px}
   .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;transition:border-color .2s}
   .card:hover{border-color:#58a6ff}
@@ -20,18 +20,14 @@
   .card-right{display:flex;gap:8px;align-items:center}
   .btn{padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all .15s}
   .btn:disabled{opacity:.4;cursor:not-allowed}
-  .btn-test{background:#21262d;color:#c9d1d9;border-color:#30363d}.btn-test:hover:not(:disabled){background:#30363d}
-  .btn-test.loading{opacity:.6}
   .btn-enable{background:#238636;color:#fff;border-color:#2ea043}.btn-enable:hover:not(:disabled){background:#2ea043}
   .btn-disable{background:#da3633;color:#fff;border-color:#f85149}.btn-disable:hover:not(:disabled){background:#f85149}
   .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
   .badge.enabled{background:#033a16;color:#3fb950}.badge.disabled{background:#21262d;color:#8b949e}
   .badge.loaded{background:#1b2d3a;color:#58a6ff}.badge.error{background:#3a0316;color:#f85149}
   .badge.unloaded{background:#1b1f24;color:#484f58}
-  .test-results{margin-top:12px;padding:12px;background:#0d1117;border-radius:6px;font-size:12px;max-height:200px;overflow-y:auto;display:none}
-  .test-results.show{display:block}.test-results .result{display:flex;align-items:center;gap:8px;padding:3px 0}
-  .test-results .result .icon{font-size:14px;width:16px}
-  .test-results .summary{color:#f0f6fc;font-weight:600;margin-bottom:6px}
+  .test-status{display:inline-flex;align-items:center;gap:4px;font-size:11px}
+  .test-status.passed{color:#3fb950}.test-status.failed{color:#f85149}.test-status.pending{color:#d29922}
   .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;font-size:14px;z-index:100;animation:slideIn .3s ease}
   .toast.success{background:#238636;color:#fff}.toast.error{background:#da3633;color:#fff}
   @keyframes slideIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
@@ -52,6 +48,8 @@ function toast(m,t){const d=document.createElement('div');d.className='toast '+t
 
 function badge(s){const m={enabled:'enabled',disabled:'disabled',loaded:'loaded',error:'error',unloaded:'unloaded'};return '<span class="badge '+(m[s]||'disabled')+'">'+s+'</span>'}
 
+function testBadge(passed){if(passed)return '<span class="test-status passed">✅ CI passed</span>';return '<span class="test-status pending">⏳ CI pending</span>'}
+
 async function load(){
   try{
     const r=await fetch('/api/plugins');
@@ -69,40 +67,23 @@ async function load(){
             <div class="meta">
               <span>🆔 ${p.plugin_id}</span>
               <span>📦 v${p.version}</span>
-              <span>🚗 ${p.route_target}</span>
               ${badge(p.state)}
-              ${p.test_passed?'✅':'⏳'} test
+              ${testBadge(p.test_passed)}
             </div>
           </div>
         </div>
         <div class="card-right">
-          <button class="btn btn-test" onclick="runTest('${p.plugin_id}')" ${p.state==='enabled'?'disabled':''}>🧪 Test</button>
           ${p.state==='enabled'?
             '<button class="btn btn-disable" onclick="toggle(\''+p.plugin_id+'\',\'disable\')">⏹ Disable</button>':
             '<button class="btn btn-enable" onclick="toggle(\''+p.plugin_id+'\',\'enable\')" '+
-            (p.test_passed?'':'disabled title="Must pass tests first"')+'>▶ Enable</button>'}
+            (p.test_passed?'':'disabled title="Must pass CI tests first"')+'>▶ Enable</button>'}
         </div>
       </div>
-      <div class="test-results" id="results-${p.plugin_id}"></div>
     `).join('');
   }catch(e){
     document.getElementById('platformStatus').textContent='Disconnected';
     document.getElementById('platformDot').className='dot red';
   }
-}
-
-async function runTest(id){
-  const btn=event.target;btn.disabled=true;btn.textContent='⏳ Testing...';btn.classList.add('loading');
-  const rDiv=document.getElementById('results-'+id);rDiv.classList.add('show');rDiv.innerHTML='<div class="summary">Running tests...</div>';
-  try{
-    const r=await fetch('/api/plugins/'+id+'/test',{method:'POST'});
-    const data=await r.json();
-    const icon=data.passed?'✅':'❌';
-    rDiv.innerHTML='<div class="summary">'+icon+' '+data.summary+'</div>'+
-      (data.results||[]).map(r=>'<div class="result"><span class="icon">'+(r.passed?'✅':'❌')+'</span><span>'+r.name+'</span><span style="color:#8b949e;font-size:11px">'+(r.duration_ms||0).toFixed(1)+'ms</span></div>').join('');
-    toast(data.passed?'All tests passed!':data.summary,data.passed?'success':'error');
-  }catch(e){rDiv.innerHTML='<div class="summary" style="color:#f85149">Test failed to run</div>';toast('Test error','error')}
-  finally{btn.disabled=false;btn.textContent='🧪 Test';btn.classList.remove('loading');load()}
 }
 
 async function toggle(id,action){

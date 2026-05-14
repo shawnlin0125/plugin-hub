@@ -8,34 +8,60 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/shawnlin0125/plugin-hub/internal/config"
+	"github.com/shawnlin0125/plugin-hub/internal/discovery"
 	"github.com/shawnlin0125/plugin-hub/internal/handler"
 	"github.com/shawnlin0125/plugin-hub/internal/registry"
 )
 
 func main() {
 	port := flag.Int("port", 8000, "HTTP listen port")
-	configPath := flag.String("config", "", "Path to plugins.yaml")
+	manifestURL := flag.String("manifest-url", "", "URL to plugin-manifest.json (e.g. GitHub raw)")
 	flag.Parse()
 
-	// Load plugin config
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+	// Default manifest URL from env or fallback
+	if *manifestURL == "" {
+		*manifestURL = os.Getenv("MANIFEST_URL")
 	}
-	log.Printf("📄 Loaded config with %d plugin(s)", len(cfg.Plugins))
+	if *manifestURL == "" {
+		*manifestURL = "https://raw.githubusercontent.com/shawnlin0125/ticket-vendor/main/plugin-manifest.json"
+	}
 
 	// Initialize registry
 	reg := registry.New()
-	for _, p := range cfg.Plugins {
-		route := os.Getenv("ROUTE_" + p.ID)
-		if route == "" {
-			route = "default"
+
+	// Fetch plugin manifest (from ticket-vendor repo)
+	fetcher := discovery.NewFetcher(*manifestURL)
+	manifest, err := fetcher.Fetch()
+	if err != nil {
+		log.Printf("⚠️  Could not fetch manifest: %v — starting with empty registry", err)
+	} else {
+		for _, p := range manifest.Plugins {
+			reg.LoadFromManifest(p.ID, p.Name, p.Version, p.Description, p.Repo, p.TestPassed)
+			testStatus := "⏳"
+			if p.TestPassed {
+				testStatus = "✅"
+			}
+			log.Printf("   📦 %s v%s — %s (test: %s)", p.ID, p.Version, p.Description, testStatus)
 		}
-		reg.Load(p.ID, p.Name, p.Version, p.Description, p.Repo, route)
-		log.Printf("   📦 %s v%s — %s (route: %s)", p.ID, p.Version, p.Description, route)
 	}
+
+	// Periodic refresh (sync with manifest every 5 minutes)
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			m, err := fetcher.Fetch()
+			if err != nil {
+				log.Printf("⚠️  Manifest refresh failed: %v", err)
+				continue
+			}
+			for _, p := range m.Plugins {
+				reg.LoadFromManifest(p.ID, p.Name, p.Version, p.Description, p.Repo, p.TestPassed)
+			}
+			log.Printf("🔄 Manifest refreshed: %d plugins", len(m.Plugins))
+		}
+	}()
 
 	// Wire up HTTP handlers
 	h := handler.New(reg)
@@ -47,12 +73,11 @@ func main() {
 	// Health
 	mux.HandleFunc("GET /health", h.Health)
 
-	// Plugin CRUD
+	// Plugin CRUD (no test endpoint — tests run in CI)
 	mux.HandleFunc("GET /api/plugins", h.ListPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}", h.GetPlugin)
 	mux.HandleFunc("POST /api/plugins/{id}/enable", h.EnablePlugin)
 	mux.HandleFunc("POST /api/plugins/{id}/disable", h.DisablePlugin)
-	mux.HandleFunc("POST /api/plugins/{id}/test", h.TestPlugin)
 
 	// CORS middleware for SPA
 	corsHandler := corsMiddleware(mux)
@@ -70,6 +95,7 @@ func main() {
 	log.Printf("🚀 Plugin Hub listening on http://0.0.0.0%s", addr)
 	log.Printf("   Dashboard: http://localhost%s", addr)
 	log.Printf("   API:       http://localhost%s/api/plugins", addr)
+	log.Printf("   Manifest:  %s", *manifestURL)
 
 	if err := http.ListenAndServe(addr, corsHandler); err != nil {
 		log.Fatalf("Server error: %v", err)
